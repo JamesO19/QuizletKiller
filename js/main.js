@@ -563,13 +563,7 @@ function renderListView() {
     // Question text (takes up remaining width) – strip HTML for list display
     const qSpan = document.createElement('span');
     qSpan.className = 'list-question';
-    if (card.format === 'html') {
-      const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = sanitizeCardHTML(card.question);
-      qSpan.textContent = tempDiv.textContent || card.question;
-    } else {
-      qSpan.textContent = card.question;
-    }
+    qSpan.textContent = getPlainText(card.question, card.format);
     li.appendChild(qSpan);
 
     // Group badge – only shown if the card belongs to a group
@@ -744,6 +738,37 @@ function renderCardContent(text, el, format) {
   } else {
     el.textContent = text;
   }
+}
+
+/**
+ * getPlainText
+ * ------------
+ * Extracts plain text from a card's question or answer, stripping
+ * HTML tags if the card uses the 'html' format.
+ *
+ * @param {string} text   – the card's question or answer text
+ * @param {string} [format] – 'html' for rich text, undefined for plain
+ * @returns {string} – plain text content
+ */
+function getPlainText(text, format) {
+  if (format === 'html') {
+    const temp = document.createElement('div');
+    temp.innerHTML = sanitizeCardHTML(text);
+    return temp.textContent || text;
+  }
+  return text;
+}
+
+/**
+ * hasVisibleContent
+ * -----------------
+ * Returns true if an HTML string contains visible text (not just <br> tags).
+ *
+ * @param {string} html – sanitized HTML string
+ * @returns {boolean}
+ */
+function hasVisibleContent(html) {
+  return html.replace(/<br>/g, '').trim().length > 0;
 }
 
 // ── Toolbar builder ──────────────────────────────────────────────────
@@ -946,8 +971,8 @@ document.getElementById('edit-save-btn').addEventListener('click', () => {
   const group = document.getElementById('edit-group-input').value.trim();
 
   // Only update if the editor has content
-  if (qHTML.replace(/<br>/g, '').trim()) card.question = qHTML;
-  if (aHTML.replace(/<br>/g, '').trim()) card.answer   = aHTML;
+  if (hasVisibleContent(qHTML)) card.question = qHTML;
+  if (hasVisibleContent(aHTML)) card.answer   = aHTML;
   card.group  = group || undefined;
   card.format = 'html';
 
@@ -1004,11 +1029,7 @@ function renderManageList() {
     // ── Card summary (question text + optional group) ─────────────────
     const summary = document.createElement('span');
     summary.className   = 'manage-summary';
-    // Strip HTML for display in the manage list
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = card.format === 'html' ? sanitizeCardHTML(card.question) : '';
-    const plainQuestion = card.format === 'html' ? (tempDiv.textContent || card.question) : card.question;
-    summary.textContent = plainQuestion;
+    summary.textContent = getPlainText(card.question, card.format);
     if (card.group) summary.textContent += ` [${card.group}]`;
     li.appendChild(summary);
 
@@ -1077,10 +1098,7 @@ document.getElementById('add-card').addEventListener('click', () => {
   const group = gInput.value.trim();
 
   // Both question and answer must have visible content
-  const qText = qHTML.replace(/<br>/g, '').trim();
-  const aText = aHTML.replace(/<br>/g, '').trim();
-
-  if (qText && aText) {
+  if (hasVisibleContent(qHTML) && hasVisibleContent(aHTML)) {
     cards.push({ question: qHTML, answer: aHTML, group: group || undefined, format: 'html' });
 
     // Clear the editor ready for the next card
