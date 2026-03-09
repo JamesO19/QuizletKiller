@@ -238,8 +238,17 @@ function renderListView() {
     li.addEventListener('click', () => {
       // Map from this item's originalIndex into the group-filtered
       // list used by Study view, so currentIndex is consistent.
-      const groupFiltered = getFilteredCards();
-      const idxInGroupFiltered = groupFiltered.findIndex(entry => entry.originalIndex === originalIndex);
+      let groupFiltered = getFilteredCards();
+      let idxInGroupFiltered = groupFiltered.findIndex(entry => entry.originalIndex === originalIndex);
+
+      // If the card isn't in Study view's current group filter,
+      // reset Study's filter to "All groups" so the card is visible.
+      if (idxInGroupFiltered < 0) {
+        document.getElementById('group-filter').value = '';
+        groupFiltered = getFilteredCards();
+        idxInGroupFiltered = groupFiltered.findIndex(entry => entry.originalIndex === originalIndex);
+      }
+
       currentIndex = idxInGroupFiltered >= 0 ? idxInGroupFiltered : 0;
       switchView('study-view');
     });
