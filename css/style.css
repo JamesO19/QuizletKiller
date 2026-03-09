@@ -1,1 +1,216 @@
 @charset "UTF-8";
+
+/* ===== Global ===== */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0 16px 40px;
+  background: #fafafa;
+}
+
+h1.title {
+  text-align: center;
+  margin: 16px 0 8px;
+}
+
+/* ===== Nav bar ===== */
+#view-nav {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.nav-btn {
+  padding: 6px 18px;
+  border: 1px solid #888;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+
+.nav-btn.active {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+
+/* ===== Views: only the .active one is shown ===== */
+.view { display: none; }
+.view.active { display: block; }
+
+/* ===== Study view ===== */
+#study-filters {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+#study-card {
+  max-width: 500px;
+  min-height: 220px;
+  margin: 0 auto;
+  border: 2px solid #333;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+  padding: 24px;
+}
+
+/* visual hint that the card is on its answer side */
+#study-card.flipped {
+  background: #eef6ff;
+}
+
+#study-card-text {
+  font-size: 1.3em;
+  text-align: center;
+  word-break: break-word;
+  margin: 0;
+}
+
+#study-card-label {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 0.85em;
+  color: #555;
+}
+
+#study-controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+#study-controls button {
+  padding: 8px 20px;
+  font-size: 1em;
+  cursor: pointer;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background: #fff;
+}
+
+#study-controls button:hover {
+  background: #eee;
+}
+
+/* ===== List view ===== */
+#list-filters {
+  text-align: center;
+  margin-bottom: 12px;
+}
+#list-filters input {
+  padding: 6px 10px;
+  width: 260px;
+  max-width: 90%;
+}
+
+#card-list {
+  list-style: none;
+  padding: 0;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.list-item {
+  padding: 10px 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.list-item:hover { background: #f0f0f0; }
+
+.list-item.empty {
+  color: #888;
+  cursor: default;
+  justify-content: center;
+}
+
+.list-question { flex: 1; }
+
+.list-group-badge {
+  margin-left: 10px;
+  font-size: 0.8em;
+  background: #e0e0e0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* ===== Add / Manage view ===== */
+#card-form {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+#card-form input {
+  margin: 4px;
+  padding: 6px 10px;
+}
+
+#card-form button {
+  margin: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+#card-count {
+  text-align: center;
+  font-size: 0.9em;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+#manage-list {
+  list-style: none;
+  padding: 0;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.manage-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  background: #fff;
+}
+
+.manage-item.dragging { opacity: 0.4; }
+
+.manage-summary { flex: 1; }
+
+.drag-handle {
+  cursor: grab;
+  font-size: 1.2em;
+  user-select: none;
+  color: #888;
+}
+
+.manage-item button {
+  padding: 3px 8px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.manage-item input {
+  padding: 4px 6px;
+  margin: 2px;
+  flex: 1;
+}
+

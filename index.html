@@ -2,13 +2,67 @@
 <html lang='en'>
   <head>
     <!-- <title>The title is still a work in progress</title> -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/style.css">
     <meta charset='UTF-8' />
     <meta name='viewport' content='width=device-width, intitial-scale=1.0'/>
+    <script defer src="js/main.js"></script>
   </head>
 
   <body>
-    <h1 class='title', id='splah-title' align='center'>Flashcards!</h1>
+    <h1 class='title' id='splash-title'>Flashcards!</h1>
+
+    <!-- ===== top nav bar: switch between views ===== -->
+    <nav id="view-nav">
+      <button class="nav-btn active" data-view="study">Study</button>
+      <button class="nav-btn" data-view="list">List</button>
+      <button class="nav-btn" data-view="add">Add / Manage</button>
+    </nav>
+
+    <!-- ===== STUDY VIEW: one card at a time ===== -->
+    <section id="study-view" class="view active">
+      <!-- group filter also available in study mode -->
+      <div id="study-filters">
+        <label for="group-filter">Group:</label>
+        <select id="group-filter">
+          <option value="">All groups</option>
+        </select>
+      </div>
+
+      <!-- the single visible card -->
+      <div id="study-card">
+        <p id="study-card-text">No cards yet — add some!</p>
+      </div>
+      <p id="study-card-label"></p>
+
+      <!-- prev / flip / next controls -->
+      <div id="study-controls">
+        <button id="prev-card">&#8592; Prev</button>
+        <button id="flip-card">Flip</button>
+        <button id="next-card">Next &#8594;</button>
+      </div>
+    </section>
+
+    <!-- ===== LIST VIEW: scrollable list of all cards ===== -->
+    <section id="list-view" class="view">
+      <div id="list-filters">
+        <input id="search-input" placeholder="Search cards…" />
+      </div>
+      <ul id="card-list"></ul>
+    </section>
+
+    <!-- ===== ADD / MANAGE VIEW: create, edit, delete, reorder ===== -->
+    <section id="add-view" class="view">
+      <div id="card-form">
+        <input id="question-input" placeholder="Question" />
+        <input id="answer-input" placeholder="Answer" />
+        <input id="group-input" placeholder="Group (optional)" />
+        <button id="add-card">Add Card</button>
+        <button id="clear-all">Clear All</button>
+      </div>
+      <div id="card-count"></div>
+      <!-- editable card list with drag reorder -->
+      <ul id="manage-list"></ul>
+    </section>
   </body>
 
 </html>
