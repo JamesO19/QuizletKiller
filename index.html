@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Page title shown in browser tab and search results -->
+    <title>CardSage: Free Smart Flashcards</title>
+    <link rel="icon" type="image/x-icon" href="cards.png">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Description used by search engines and social sharing previews -->
+    <meta name="description" content="Study smarter with CardSage – free flashcards with spaced-repetition grading, dark mode, and shuffle." />
+    <!-- Load stylesheet before the script so styles are applied immediately -->
+    <link rel="stylesheet" href="css/style.css" />
+    <!-- defer: script runs after HTML is fully parsed; no DOMContentLoaded needed -->
+    <script defer src="js/main.js"></script>
+  </head>
+
+  <body>
+    <!-- =================================================================
+         APP HEADER
+         Contains the site title, the study-streak badge, and the
+         dark-mode toggle.  These are always visible, regardless of
+         which view is active.
+    ================================================================= -->
+    <header id="app-header">
+      <h1 class="title" id="splash-title">🔮 CardSage</h1>
+      <div id="header-controls">
+        <!-- Streak badge: displays how many consecutive days the user
+             has visited the app.  JS updates both the number and the
+             word "day"/"days" on load so the grammar is always correct. -->
+        <div id="streak-badge" title="Your study streak">
+          🔥 <span id="streak-count">0</span> <span id="streak-day-word">day</span> streak
+        </div>
+        <!-- Dark-mode toggle: switches between light ☀️ and dark 🌙 themes.
+             JS fills in the correct icon on load and after each click. -->
+        <button id="dark-mode-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
+      </div>
+    </header>
+
+    <!-- =================================================================
+         TOP NAV BAR
+         Three buttons that switch between the three main views.
+         The active button is highlighted via the .active CSS class,
+         which JS adds/removes on each switch.
+    ================================================================= -->
+    <nav id="view-nav" aria-label="Main navigation">
+      <button class="nav-btn active" data-view="study">📖 Study</button>
+      <button class="nav-btn" data-view="list">📋 List</button>
+      <button class="nav-btn" data-view="add">➕ Add / Manage</button>
+    </nav>
+
+    <!-- =================================================================
+         STUDY VIEW
+         Shows one flashcard at a time.  The user can:
+           • Click the card (or press Space/↑/↓/F) to flip it
+           • Navigate with Prev/Next buttons or ← → arrow keys
+           • Filter cards by group
+           • Toggle shuffle mode to randomise the order
+           • Grade themselves Correct / Incorrect after seeing the answer
+    ================================================================= -->
+    <section id="study-view" class="view active" aria-label="Study view">
+
+      <!-- Group filter + shuffle toggle, centred above the card -->
+      <div id="study-filters">
+        <label for="group-filter">Group:</label>
+        <select id="group-filter" aria-label="Filter by group">
+          <option value="">All groups</option>
+          <!-- Options are built dynamically by JS (updateGroupOptions) -->
+        </select>
+
+        <!-- Shuffle button: when active, cards are shown in random order.
+             JS adds/removes the .active class and rebuilds the shuffled
+             index array (Fisher-Yates algorithm). -->
+        <button id="shuffle-btn" title="Shuffle card order" aria-pressed="false">🔀 Shuffle</button>
+      </div>
+
+      <!-- Progress bar: fills proportionally as the user advances.
+           Width is set by JS (updateProgressBar) as a percentage. -->
+      <div id="progress-bar-container" title="Progress through current deck" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="progress-bar"></div>
+      </div>
+
+      <!-- THE FLASHCARD (3-D FLIP STRUCTURE)
+           #study-card   – sets up the 3-D perspective space (perspective: 1000px).
+           #card-inner   – the element that actually rotates (rotateY 180°).
+           .card-face    – each face sits back-to-back; backface-visibility:hidden
+                           makes a face invisible when it points away from the viewer.
+           #card-front   – shows the question (default / unflipped side).
+           #card-back    – shows the answer; pre-rotated 180° so it appears
+                           right-side-up after #card-inner rotates 180°. -->
+      <div id="study-card" role="button" tabindex="0" aria-label="Flashcard – click or press Space to flip">
+        <div id="card-inner">
+
+          <!-- Front face: the question -->
+          <div class="card-face" id="card-front">
+            <p id="study-card-text">No cards yet — add some!</p>
+            <!-- Small hint so first-time users know the card is interactive -->
+            <span class="flip-hint">Click to flip</span>
+          </div>
+
+          <!-- Back face: the answer.  Pre-rotated so the text reads forwards
+               after the parent flips (two 180° rotations cancel out). -->
+          <div class="card-face" id="card-back">
+            <p id="study-card-answer-text"></p>
+            <span class="flip-hint">Click to flip back</span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Position label: "Card 3 / 10  [Biology]"
+           Sits naturally below the fixed-height card box. -->
+      <p id="study-card-label" aria-live="polite"></p>
+
+      <!-- Navigation and flip controls -->
+      <div id="study-controls">
+        <button id="prev-card" title="Previous card (← key)">← Prev</button>
+        <button id="flip-card" title="Flip card (Space / F key)">🔄 Flip</button>
+        <button id="next-card" title="Next card (→ key)">Next →</button>
+      </div>
+
+      <!-- Grading buttons – only appear (via the .visible class) once the
+           card is flipped so the user sees the answer first.
+           Pressing these also auto-advances to the next card. -->
+      <div id="grade-controls" aria-label="Grade yourself">
+        <button id="mark-incorrect" class="grade-btn incorrect-btn" title="Mark incorrect (X key)">✗ Incorrect</button>
+        <button id="mark-correct"   class="grade-btn correct-btn"   title="Mark correct (C key)">✓ Correct</button>
+      </div>
+
+      <!-- Session score: running tally of correct / incorrect this session.
+           aria-live="polite" announces updates to screen readers. -->
+      <div id="session-stats" aria-live="polite">
+        <span id="stat-correct"   class="stat correct-stat">✓ 0</span>
+        <span class="stat-separator"> · </span>
+        <span id="stat-incorrect" class="stat incorrect-stat">✗ 0</span>
+        <!-- Reset button zeroes the session counters -->
+        <button id="reset-stats" title="Reset session score">↺ Reset score</button>
+      </div>
+
+      <!-- Keyboard shortcut cheat-sheet shown at the bottom of study view -->
+      <p id="keyboard-hint">
+        ⌨️ <strong>Shortcuts:</strong> ← → navigate &nbsp;·&nbsp; Space flip &nbsp;·&nbsp; C correct &nbsp;·&nbsp; X incorrect
+      </p>
+
+    </section>
+
+    <!-- =================================================================
+         LIST VIEW
+         Scrollable list of all cards with group filter and text search.
+         Clicking any row jumps straight to that card in Study view.
+    ================================================================= -->
+    <section id="list-view" class="view" aria-label="Card list view">
+      <div id="list-filters">
+        <label for="list-group-filter">Group:</label>
+        <select id="list-group-filter" aria-label="Filter list by group">
+          <option value="">All groups</option>
+        </select>
+        <!-- Live search box: JS re-filters the list on every keystroke -->
+        <input id="search-input" placeholder="🔍 Search cards…" aria-label="Search cards" />
+      </div>
+      <!-- JS populates this list with <li> elements (renderListView) -->
+      <ul id="card-list" aria-label="Matching cards"></ul>
+    </section>
+
+    <!-- =================================================================
+         ADD / MANAGE VIEW
+         Create new cards using a large flashcard-style editor.
+         Edit or delete existing ones, drag to reorder.
+         Also contains Export and Import controls.
+    ================================================================= -->
+    <section id="add-view" class="view" aria-label="Add and manage cards">
+
+      <!-- Card Editor: large flashcard template with front/back tabs -->
+      <div id="card-editor">
+        <div id="editor-tabs">
+          <button class="editor-tab active" data-side="front">Front (Question)</button>
+          <button class="editor-tab" data-side="back">Back (Answer)</button>
+        </div>
+        <div id="editor-card-wrapper">
+          <div id="editor-front" class="editor-face active" contenteditable="true"
+               data-placeholder="Type your question here…" aria-label="Card question"></div>
+          <div id="editor-back" class="editor-face" contenteditable="true"
+               data-placeholder="Type your answer here…" aria-label="Card answer"></div>
+        </div>
+        <!-- Math & formatting toolbar – populated by JS -->
+        <div id="math-toolbar" class="math-toolbar" aria-label="Math symbols and formatting"></div>
+        <div id="editor-bottom-row">
+          <input id="group-input" placeholder="Group (optional)" aria-label="Card group" />
+          <button id="add-card">➕ Add Card</button>
+          <button id="clear-all" class="danger-btn">🗑 Clear All</button>
+        </div>
+      </div>
+
+      <!-- Running count of all cards in the deck -->
+      <div id="card-count" aria-live="polite"></div>
+
+      <!-- Import / Export controls -->
+      <div id="import-export">
+        <button id="export-btn" title="Download cards as JSON">⬇ Export JSON</button>
+        <button id="import-btn" title="Load cards from a JSON file">⬆ Import JSON</button>
+        <input type="file" id="import-file-input" accept=".json" aria-label="Import JSON file" style="display:none" />
+      </div>
+
+      <!-- JS renders each card as a draggable row with Edit/Delete buttons -->
+      <ul id="manage-list" aria-label="Manage cards"></ul>
+
+    </section>
+
+    <!-- =================================================================
+         EDIT MODAL
+         Full-screen overlay with the same card editor for editing
+         existing flashcards.
+    ================================================================= -->
+    <div id="edit-modal" class="modal-overlay" style="display:none" role="dialog" aria-label="Edit card">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>✏️ Edit Card</h3>
+          <button id="edit-modal-close" class="modal-close-btn" aria-label="Close">&times;</button>
+        </div>
+        <div class="editor-tabs" id="edit-editor-tabs">
+          <button class="editor-tab active" data-side="front">Front (Question)</button>
+          <button class="editor-tab" data-side="back">Back (Answer)</button>
+        </div>
+        <div id="edit-card-wrapper" class="editor-card-wrapper">
+          <div id="edit-editor-front" class="editor-face active" contenteditable="true"
+               data-placeholder="Question" aria-label="Edit question"></div>
+          <div id="edit-editor-back" class="editor-face" contenteditable="true"
+               data-placeholder="Answer" aria-label="Edit answer"></div>
+        </div>
+        <div id="edit-math-toolbar" class="math-toolbar" aria-label="Math symbols and formatting"></div>
+        <div class="modal-bottom-row">
+          <input id="edit-group-input" placeholder="Group (optional)" aria-label="Card group" />
+          <div class="modal-actions">
+            <button id="edit-save-btn" class="primary-action-btn">💾 Save Changes</button>
+            <button id="edit-cancel-btn" class="secondary-action-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </body>
+</html>
