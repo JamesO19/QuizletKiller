@@ -63,7 +63,7 @@ function loadCards() {
       if (typeof answer   !== 'string') answer   = String(answer);
       if (group != null && typeof group !== 'string') group = String(group);
 
-      cards.push({ question, answer, group });
+      cards.push({ question, answer, group, format: c.format || undefined });
     });
   } catch (err) {
     // JSON.parse can throw SyntaxError; catch it gracefully
@@ -318,8 +318,8 @@ function renderStudyCard() {
   cardEl.classList.remove('flipped');
 
   // Populate both faces up-front so flipping is instant (no fetch needed)
-  textEl.textContent = card.question;
-  ansEl.textContent  = card.answer;
+  renderCardContent(card.question, textEl, card.format);
+  renderCardContent(card.answer, ansEl, card.format);
 
   // Build the position label, e.g. "Card 3 / 10  [Biology]"
   const groupStr = card.group ? `  [${card.group}]` : '';
@@ -498,8 +498,9 @@ document.addEventListener('keydown', e => {
   // Only act when the Study view is currently visible
   if (!document.getElementById('study-view').classList.contains('active')) return;
 
-  // Don't intercept shortcuts while the user is typing in a form field
+  // Don't intercept shortcuts while the user is typing in a form field or contenteditable
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+  if (e.target.isContentEditable) return;
 
   if (e.key === 'ArrowLeft')  { currentIndex--; renderStudyCard(); }
   if (e.key === 'ArrowRight') { currentIndex++; renderStudyCard(); }
@@ -559,10 +560,16 @@ function renderListView() {
     const li = document.createElement('li');
     li.className = 'list-item';
 
-    // Question text (takes up remaining width)
+    // Question text (takes up remaining width) – strip HTML for list display
     const qSpan = document.createElement('span');
     qSpan.className = 'list-question';
-    qSpan.textContent = card.question;
+    if (card.format === 'html') {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = sanitizeCardHTML(card.question);
+      qSpan.textContent = tempDiv.textContent || card.question;
+    } else {
+      qSpan.textContent = card.question;
+    }
     li.appendChild(qSpan);
 
     // Group badge – only shown if the card belongs to a group
@@ -608,6 +615,366 @@ document.getElementById('list-group-filter').addEventListener('change', renderLi
 // SECTION 6 – ADD / MANAGE VIEW
 // =====================================================================
 
+// ── Math toolbar definition ──────────────────────────────────────────
+// Each entry describes a button in the formatting/math toolbar.
+// 'action' type uses document.execCommand for rich-text formatting.
+// 'insert' type inserts a Unicode character at the caret position.
+
+const TOOLBAR_ITEMS = [
+  { type: 'action', action: 'superscript', label: 'x<sup>n</sup>', title: 'Superscript', cls: 'format-btn' },
+  { type: 'action', action: 'subscript',   label: 'x<sub>n</sub>', title: 'Subscript',   cls: 'format-btn' },
+  { type: 'separator' },
+  { type: 'insert', char: 'ℝ', title: 'Real numbers' },
+  { type: 'insert', char: 'ℤ', title: 'Integers' },
+  { type: 'insert', char: 'ℕ', title: 'Natural numbers' },
+  { type: 'insert', char: 'ℂ', title: 'Complex numbers' },
+  { type: 'insert', char: 'ℚ', title: 'Rational numbers' },
+  { type: 'separator' },
+  { type: 'insert', char: 'π', title: 'Pi' },
+  { type: 'insert', char: 'θ', title: 'Theta' },
+  { type: 'insert', char: 'α', title: 'Alpha' },
+  { type: 'insert', char: 'β', title: 'Beta' },
+  { type: 'insert', char: 'γ', title: 'Gamma' },
+  { type: 'insert', char: 'δ', title: 'Delta (lower)' },
+  { type: 'insert', char: 'λ', title: 'Lambda' },
+  { type: 'insert', char: 'μ', title: 'Mu' },
+  { type: 'insert', char: 'σ', title: 'Sigma (lower)' },
+  { type: 'insert', char: 'φ', title: 'Phi' },
+  { type: 'insert', char: 'ω', title: 'Omega' },
+  { type: 'separator' },
+  { type: 'insert', char: '∞', title: 'Infinity' },
+  { type: 'insert', char: '√', title: 'Square root' },
+  { type: 'insert', char: '±', title: 'Plus-minus' },
+  { type: 'insert', char: '×', title: 'Multiply' },
+  { type: 'insert', char: '÷', title: 'Divide' },
+  { type: 'insert', char: '≠', title: 'Not equal' },
+  { type: 'insert', char: '≈', title: 'Approximately' },
+  { type: 'insert', char: '≤', title: 'Less than or equal' },
+  { type: 'insert', char: '≥', title: 'Greater than or equal' },
+  { type: 'insert', char: '∝', title: 'Proportional to' },
+  { type: 'separator' },
+  { type: 'insert', char: '∈', title: 'Element of' },
+  { type: 'insert', char: '∉', title: 'Not element of' },
+  { type: 'insert', char: '⊂', title: 'Subset' },
+  { type: 'insert', char: '∪', title: 'Union' },
+  { type: 'insert', char: '∩', title: 'Intersection' },
+  { type: 'insert', char: '∀', title: 'For all' },
+  { type: 'insert', char: '∃', title: 'There exists' },
+  { type: 'separator' },
+  { type: 'insert', char: 'Σ', title: 'Summation' },
+  { type: 'insert', char: '∫', title: 'Integral' },
+  { type: 'insert', char: 'Δ', title: 'Delta (upper)' },
+  { type: 'insert', char: '∂', title: 'Partial derivative' },
+  { type: 'insert', char: '∇', title: 'Nabla / gradient' },
+  { type: 'separator' },
+  { type: 'insert', char: '→', title: 'Right arrow' },
+  { type: 'insert', char: '←', title: 'Left arrow' },
+  { type: 'insert', char: '⇒', title: 'Implies' },
+  { type: 'insert', char: '⇔', title: 'If and only if' },
+  { type: 'insert', char: '¬', title: 'Logical not' },
+  { type: 'insert', char: '∧', title: 'Logical and' },
+  { type: 'insert', char: '∨', title: 'Logical or' },
+];
+
+// ── HTML sanitization ───────────────────────────────────────────────
+// Cards may contain simple HTML from the contenteditable editor.
+// We only allow <sub>, <sup>, and <br> tags – everything else is stripped.
+
+/**
+ * sanitizeCardHTML
+ * ----------------
+ * Parses an HTML string and rebuilds it with only safe tags allowed.
+ *
+ * @param {string} html – raw HTML from contenteditable
+ * @returns {string} – clean HTML with only <sub>, <sup>, <br> tags
+ */
+function sanitizeCardHTML(html) {
+  if (!html) return '';
+
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+
+  function processNode(node) {
+    let result = '';
+    node.childNodes.forEach(child => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        // Escape HTML entities in text content
+        result += child.textContent
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const tag = child.tagName.toLowerCase();
+        if (tag === 'br') {
+          result += '<br>';
+        } else if (tag === 'sub' || tag === 'sup') {
+          result += '<' + tag + '>' + processNode(child) + '</' + tag + '>';
+        } else if (tag === 'div' || tag === 'p') {
+          // Convert block elements to line breaks (contenteditable uses divs)
+          const inner = processNode(child);
+          if (inner) result += '<br>' + inner;
+        } else {
+          // Flatten all other elements – keep their text but strip the tag
+          result += processNode(child);
+        }
+      }
+    });
+    return result;
+  }
+
+  let result = processNode(temp);
+  // Clean up leading <br> tags
+  result = result.replace(/^(<br>)+/, '');
+  return result;
+}
+
+/**
+ * renderCardContent
+ * -----------------
+ * Renders card text into a DOM element, choosing between plain text
+ * and sanitized HTML based on the card's format field.
+ *
+ * @param {string} text   – the card's question or answer text
+ * @param {HTMLElement} el – the element to render into
+ * @param {string} [format] – 'html' for rich text, undefined for plain
+ */
+function renderCardContent(text, el, format) {
+  if (format === 'html') {
+    el.innerHTML = sanitizeCardHTML(text);
+  } else {
+    el.textContent = text;
+  }
+}
+
+// ── Toolbar builder ──────────────────────────────────────────────────
+
+/**
+ * buildToolbar
+ * ------------
+ * Populates a toolbar container element with math symbol buttons.
+ * Each button prevents default mousedown to avoid stealing focus
+ * from the contenteditable area.
+ *
+ * @param {HTMLElement} container – the toolbar element to fill
+ * @param {function} getActiveEditor – returns the currently active editor-face element
+ */
+function buildToolbar(container, getActiveEditor) {
+  container.innerHTML = '';
+  TOOLBAR_ITEMS.forEach(item => {
+    if (item.type === 'separator') {
+      const sep = document.createElement('span');
+      sep.className = 'toolbar-separator';
+      container.appendChild(sep);
+      return;
+    }
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'math-btn' + (item.cls ? ' ' + item.cls : '');
+    btn.title = item.title;
+
+    if (item.type === 'action') {
+      btn.innerHTML = item.label;
+    } else {
+      btn.textContent = item.char;
+    }
+
+    // Prevent the button click from stealing focus from the editor
+    btn.addEventListener('mousedown', e => e.preventDefault());
+
+    btn.addEventListener('click', () => {
+      const editor = getActiveEditor();
+      if (!editor) return;
+      editor.focus();
+
+      if (item.type === 'action') {
+        document.execCommand(item.action, false, null);
+      } else {
+        document.execCommand('insertText', false, item.char);
+      }
+      updateEditorPlaceholder(editor);
+    });
+
+    container.appendChild(btn);
+  });
+}
+
+// ── Editor placeholder management ────────────────────────────────────
+
+/**
+ * updateEditorPlaceholder
+ * -----------------------
+ * Toggles the 'is-empty' class on a contenteditable editor face
+ * so the CSS placeholder pseudo-element shows when the editor is empty.
+ *
+ * @param {HTMLElement} editor – the editor-face element
+ */
+function updateEditorPlaceholder(editor) {
+  editor.classList.toggle('is-empty', !editor.textContent.trim());
+}
+
+// ── Editor tab switching ────────────────────────────────────────────
+
+/**
+ * setupEditorTabs
+ * ---------------
+ * Wires up front/back tab buttons to show/hide the corresponding
+ * editor face in a card editor. Works for both the main editor and
+ * the edit modal.
+ *
+ * @param {string} tabContainerId – ID of the tabs container
+ * @param {string} frontId – ID of the front editor-face
+ * @param {string} backId – ID of the back editor-face
+ */
+function setupEditorTabs(tabContainerId, frontId, backId) {
+  const tabContainer = document.getElementById(tabContainerId);
+  const frontEl = document.getElementById(frontId);
+  const backEl = document.getElementById(backId);
+
+  tabContainer.querySelectorAll('.editor-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Update tab active states
+      tabContainer.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // Show the right face
+      if (tab.dataset.side === 'front') {
+        frontEl.classList.add('active');
+        backEl.classList.remove('active');
+      } else {
+        backEl.classList.add('active');
+        frontEl.classList.remove('active');
+      }
+    });
+  });
+}
+
+// ── Main card editor setup ──────────────────────────────────────────
+
+// Set up tabs for the main editor
+setupEditorTabs('editor-tabs', 'editor-front', 'editor-back');
+
+// Build the main toolbar
+const mainEditorFront = document.getElementById('editor-front');
+const mainEditorBack  = document.getElementById('editor-back');
+
+buildToolbar(document.getElementById('math-toolbar'), () => {
+  // Return whichever editor face is currently active
+  if (mainEditorFront.classList.contains('active')) return mainEditorFront;
+  return mainEditorBack;
+});
+
+// Initialize placeholders
+updateEditorPlaceholder(mainEditorFront);
+updateEditorPlaceholder(mainEditorBack);
+mainEditorFront.addEventListener('input', () => updateEditorPlaceholder(mainEditorFront));
+mainEditorBack.addEventListener('input', () => updateEditorPlaceholder(mainEditorBack));
+
+// ── Edit modal setup ────────────────────────────────────────────────
+
+setupEditorTabs('edit-editor-tabs', 'edit-editor-front', 'edit-editor-back');
+
+const editEditorFront = document.getElementById('edit-editor-front');
+const editEditorBack  = document.getElementById('edit-editor-back');
+
+buildToolbar(document.getElementById('edit-math-toolbar'), () => {
+  if (editEditorFront.classList.contains('active')) return editEditorFront;
+  return editEditorBack;
+});
+
+updateEditorPlaceholder(editEditorFront);
+updateEditorPlaceholder(editEditorBack);
+editEditorFront.addEventListener('input', () => updateEditorPlaceholder(editEditorFront));
+editEditorBack.addEventListener('input', () => updateEditorPlaceholder(editEditorBack));
+
+/** Index of the card currently being edited in the modal (null if not editing) */
+let editingIndex = null;
+
+/**
+ * openEditModal
+ * -------------
+ * Opens the edit modal pre-populated with the card's current content.
+ *
+ * @param {number} index – index of the card in the `cards` array
+ */
+function openEditModal(index) {
+  const card = cards[index];
+  editingIndex = index;
+
+  // Populate the editor faces
+  if (card.format === 'html') {
+    editEditorFront.innerHTML = sanitizeCardHTML(card.question);
+    editEditorBack.innerHTML  = sanitizeCardHTML(card.answer);
+  } else {
+    editEditorFront.textContent = card.question;
+    editEditorBack.textContent  = card.answer;
+  }
+
+  document.getElementById('edit-group-input').value = card.group || '';
+
+  // Reset to front tab
+  const tabs = document.getElementById('edit-editor-tabs');
+  tabs.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
+  tabs.querySelector('[data-side="front"]').classList.add('active');
+  editEditorFront.classList.add('active');
+  editEditorBack.classList.remove('active');
+
+  updateEditorPlaceholder(editEditorFront);
+  updateEditorPlaceholder(editEditorBack);
+
+  // Show the modal
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+
+/**
+ * closeEditModal
+ * --------------
+ * Closes the edit modal without saving.
+ */
+function closeEditModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+  editingIndex = null;
+}
+
+// Save button in edit modal
+document.getElementById('edit-save-btn').addEventListener('click', () => {
+  if (editingIndex === null) return;
+  const card = cards[editingIndex];
+
+  const qHTML = sanitizeCardHTML(editEditorFront.innerHTML);
+  const aHTML = sanitizeCardHTML(editEditorBack.innerHTML);
+  const group = document.getElementById('edit-group-input').value.trim();
+
+  // Only update if the editor has content
+  if (qHTML.replace(/<br>/g, '').trim()) card.question = qHTML;
+  if (aHTML.replace(/<br>/g, '').trim()) card.answer   = aHTML;
+  card.group  = group || undefined;
+  card.format = 'html';
+
+  saveCards();
+  updateGroupOptions();
+  renderManageList();
+  closeEditModal();
+});
+
+// Cancel and close buttons
+document.getElementById('edit-cancel-btn').addEventListener('click', closeEditModal);
+document.getElementById('edit-modal-close').addEventListener('click', closeEditModal);
+
+// Close modal on overlay click (not content)
+document.getElementById('edit-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('edit-modal')) closeEditModal();
+});
+
+// Close modal on Escape key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('edit-modal').style.display === 'flex') {
+    closeEditModal();
+  }
+});
+
+// ── Manage list ─────────────────────────────────────────────────────
+
 /**
  * renderManageList
  * ----------------
@@ -628,7 +995,6 @@ function renderManageList() {
     li.dataset.index = idx;   // Store the index; used by the drop handler
 
     // ── Drag handle ──────────────────────────────────────────────────
-    // Braille pattern character used as a visual "grip" icon
     const handle = document.createElement('span');
     handle.className   = 'drag-handle';
     handle.textContent = '⠿';
@@ -638,18 +1004,21 @@ function renderManageList() {
     // ── Card summary (question text + optional group) ─────────────────
     const summary = document.createElement('span');
     summary.className   = 'manage-summary';
-    summary.textContent = card.question;
+    // Strip HTML for display in the manage list
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = card.format === 'html' ? sanitizeCardHTML(card.question) : '';
+    const plainQuestion = card.format === 'html' ? (tempDiv.textContent || card.question) : card.question;
+    summary.textContent = plainQuestion;
     if (card.group) summary.textContent += ` [${card.group}]`;
     li.appendChild(summary);
 
-    // ── Edit button ───────────────────────────────────────────────────
-    // Replaces the row with inline input fields (see beginInlineEdit)
+    // ── Edit button – opens the edit modal ────────────────────────────
     const editBtn = document.createElement('button');
     editBtn.textContent = 'Edit';
     editBtn.title       = 'Edit this card';
     editBtn.addEventListener('click', e => {
-      e.stopPropagation(); // Don't let this bubble up and re-trigger the row
-      beginInlineEdit(li, idx);
+      e.stopPropagation();
+      openEditModal(idx);
     });
     li.appendChild(editBtn);
 
@@ -659,7 +1028,7 @@ function renderManageList() {
     delBtn.title       = 'Delete this card';
     delBtn.addEventListener('click', e => {
       e.stopPropagation();
-      cards.splice(idx, 1); // Remove the card at position idx
+      cards.splice(idx, 1);
       saveCards();
       updateGroupOptions();
       renderManageList();
@@ -667,21 +1036,14 @@ function renderManageList() {
     li.appendChild(delBtn);
 
     // ── Drag-and-drop event listeners ─────────────────────────────────
-    // HTML5 drag-and-drop API:
-    //   dragstart → set the source index in the drag "payload"
-    //   dragover  → signal that this element accepts drops
-    //   drop      → reorder the `cards` array and re-render
-    //   dragend   → clean up visual state
-
     li.addEventListener('dragstart', e => {
-      li.classList.add('dragging');        // Dim the dragged row (CSS)
+      li.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
-      // Transfer the source index as a string (dataTransfer only stores strings)
       e.dataTransfer.setData('text/plain', String(idx));
     });
 
     li.addEventListener('dragover', e => {
-      e.preventDefault(); // Required to allow a drop on this element
+      e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
     });
 
@@ -690,9 +1052,7 @@ function renderManageList() {
       const fromIdx = Number(e.dataTransfer.getData('text/plain'));
       const toIdx   = Number(li.dataset.index);
       if (fromIdx !== toIdx) {
-        // splice(fromIdx, 1) removes one element at fromIdx and returns it
         const [moved] = cards.splice(fromIdx, 1);
-        // Insert the removed element at the target position
         cards.splice(toIdx, 0, moved);
         saveCards();
         renderManageList();
@@ -705,90 +1065,44 @@ function renderManageList() {
   });
 }
 
-/**
- * beginInlineEdit
- * ---------------
- * Replaces a manage-list row with inline <input> fields for editing.
- * "Save" commits the changes; "Cancel" restores the display view.
- *
- * @param {HTMLElement} li    – the <li> element to convert into an edit form
- * @param {number}      index – position of the card in the `cards` array
- */
-function beginInlineEdit(li, index) {
-  const card = cards[index];
-  li.innerHTML = ''; // Clear display content; replace with edit fields
-
-  // Question input – pre-filled with the existing value
-  const qInput = document.createElement('input');
-  qInput.value       = card.question;
-  qInput.placeholder = 'Question';
-  qInput.title       = 'Edit question';
-
-  // Answer input
-  const aInput = document.createElement('input');
-  aInput.value       = card.answer;
-  aInput.placeholder = 'Answer';
-  aInput.title       = 'Edit answer';
-
-  // Group input (optional)
-  const gInput = document.createElement('input');
-  gInput.value       = card.group || '';
-  gInput.placeholder = 'Group (optional)';
-  gInput.title       = 'Edit group';
-
-  // Save button – writes updated values back to the card object
-  const saveBtn = document.createElement('button');
-  saveBtn.textContent = 'Save';
-  saveBtn.addEventListener('click', () => {
-    // Keep existing value if the user left the field empty
-    card.question = qInput.value.trim() || card.question;
-    card.answer   = aInput.value.trim() || card.answer;
-    card.group    = gInput.value.trim() || undefined;
-    saveCards();
-    updateGroupOptions();
-    renderManageList(); // Rebuild in display (non-edit) mode
-  });
-
-  // Cancel button – discard changes, return to display mode
-  const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => renderManageList());
-
-  li.append(qInput, aInput, gInput, saveBtn, cancelBtn);
-}
-
 // ── Add card button ────────────────────────────────────────────────────
 
 document.getElementById('add-card').addEventListener('click', () => {
-  const qInput = document.getElementById('question-input');
-  const aInput = document.getElementById('answer-input');
-  const gInput = document.getElementById('group-input');
+  const frontEl = document.getElementById('editor-front');
+  const backEl  = document.getElementById('editor-back');
+  const gInput  = document.getElementById('group-input');
 
-  const question = qInput.value.trim();
-  const answer   = aInput.value.trim();
-  const group    = gInput.value.trim();
+  const qHTML = sanitizeCardHTML(frontEl.innerHTML);
+  const aHTML = sanitizeCardHTML(backEl.innerHTML);
+  const group = gInput.value.trim();
 
-  // Both question and answer must be non-empty
-  if (question && answer) {
-    cards.push({ question, answer, group: group || undefined });
+  // Both question and answer must have visible content
+  const qText = qHTML.replace(/<br>/g, '').trim();
+  const aText = aHTML.replace(/<br>/g, '').trim();
 
-    // Clear the form ready for the next card
-    qInput.value = '';
-    aInput.value = '';
-    gInput.value = '';
+  if (qText && aText) {
+    cards.push({ question: qHTML, answer: aHTML, group: group || undefined, format: 'html' });
 
-    // Keep focus on the question field for fast consecutive entry
-    qInput.focus();
+    // Clear the editor ready for the next card
+    frontEl.innerHTML = '';
+    backEl.innerHTML  = '';
+    gInput.value      = '';
+
+    updateEditorPlaceholder(frontEl);
+    updateEditorPlaceholder(backEl);
+
+    // Switch to front tab and focus
+    const tabs = document.getElementById('editor-tabs');
+    tabs.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
+    tabs.querySelector('[data-side="front"]').classList.add('active');
+    frontEl.classList.add('active');
+    backEl.classList.remove('active');
+    frontEl.focus();
 
     saveCards();
     updateGroupOptions();
     renderManageList();
   }
-});
-
-// Pressing Enter in the answer field submits the card (common UX shortcut)
-document.getElementById('answer-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('add-card').click();
 });
 
 // ── Clear all button ───────────────────────────────────────────────────
@@ -928,6 +1242,7 @@ function importCards(file) {
             question: String(c.question).trim(),
             answer:   String(c.answer).trim(),
             group:    c.group ? String(c.group).trim() : undefined,
+            format:   c.format || undefined,
           });
           added++;
         }
