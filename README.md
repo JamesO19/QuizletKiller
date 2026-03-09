@@ -1,2 +1,2 @@
-# QuizletKiller
-This will destroy quizlet for good
+# CardSage
+or AceDeck, we don't know yet...
