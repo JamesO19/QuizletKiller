@@ -4,7 +4,7 @@
     <!-- <title>The title is still a work in progress</title> -->
     <link rel="stylesheet" href="css/style.css">
     <meta charset='UTF-8' />
-    <meta name='viewport' content='width=device-width, intitial-scale=1.0'/>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'/>
     <script defer src="js/main.js"></script>
   </head>
 
@@ -45,6 +45,10 @@
     <!-- ===== LIST VIEW: scrollable list of all cards ===== -->
     <section id="list-view" class="view">
       <div id="list-filters">
+        <label for="list-group-filter">Group:</label>
+        <select id="list-group-filter">
+          <option value="">All groups</option>
+        </select>
         <input id="search-input" placeholder="Search cards…" />
       </div>
       <ul id="card-list"></ul>

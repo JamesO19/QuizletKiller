@@ -20,12 +20,30 @@ const cards = [];
 function loadCards() {
   try {
     const raw = localStorage.getItem('flashcards');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        parsed.forEach(c => cards.push(c));
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+
+    parsed.forEach((c, index) => {
+      if (!c || typeof c !== 'object') {
+        console.warn('Skipping invalid card (not an object) at index', index);
+        return;
       }
-    }
+
+      let { question, answer, group } = c;
+
+      if (question == null || answer == null) {
+        console.warn('Skipping invalid card (missing question/answer) at index', index);
+        return;
+      }
+
+      if (typeof question !== 'string') question = String(question);
+      if (typeof answer !== 'string') answer = String(answer);
+      if (group != null && typeof group !== 'string') group = String(group);
+
+      cards.push({ question, answer, group });
+    });
   } catch (err) {
     console.warn('Could not load cards from storage:', err);
   }
@@ -33,7 +51,12 @@ function loadCards() {
 
 // Persist the current `cards` array to localStorage.
 function saveCards() {
-  localStorage.setItem('flashcards', JSON.stringify(cards));
+  try {
+    localStorage.setItem('flashcards', JSON.stringify(cards));
+  } catch (err) {
+    console.warn('Could not save cards to storage:', err);
+    alert('Warning: your flashcards could not be saved. Changes may not be preserved.');
+  }
 }
 
 // ---------------------
@@ -78,8 +101,12 @@ let flipped = false;
 
 // getFilteredCards() returns the subset of cards matching the
 // currently-selected group filter.  Study & List views both use it.
-function getFilteredCards() {
-  const group = document.getElementById('group-filter').value;
+// An optional groupValue parameter lets callers specify which group
+// filter to use (defaults to the Study view's #group-filter).
+function getFilteredCards(groupValue) {
+  const group = groupValue !== undefined
+    ? groupValue
+    : document.getElementById('group-filter').value;
   if (!group) return cards.map((c, i) => ({ card: c, originalIndex: i }));
   return cards
     .map((c, i) => ({ card: c, originalIndex: i }))
@@ -174,8 +201,9 @@ function renderListView() {
   const ul = document.getElementById('card-list');
   ul.innerHTML = '';
 
+  const listGroup = document.getElementById('list-group-filter').value;
   const term = document.getElementById('search-input').value.trim().toLowerCase();
-  const filtered = getFilteredCards().filter(({ card }) => {
+  const filtered = getFilteredCards(listGroup).filter(({ card }) => {
     if (!term) return true;
     return card.question.toLowerCase().includes(term) ||
            card.answer.toLowerCase().includes(term);
@@ -208,9 +236,11 @@ function renderListView() {
 
     // clicking jumps to that card in Study view
     li.addEventListener('click', () => {
-      // find this card's position within the *current* filtered set
-      // used by Study view
-      currentIndex = filteredIdx;
+      // Map from this item's originalIndex into the group-filtered
+      // list used by Study view, so currentIndex is consistent.
+      const groupFiltered = getFilteredCards();
+      const idxInGroupFiltered = groupFiltered.findIndex(entry => entry.originalIndex === originalIndex);
+      currentIndex = idxInGroupFiltered >= 0 ? idxInGroupFiltered : 0;
       switchView('study-view');
     });
 
@@ -220,6 +250,9 @@ function renderListView() {
 
 // live search in list view
 document.getElementById('search-input').addEventListener('input', renderListView);
+
+// list view group filter changes should re-render the list
+document.getElementById('list-group-filter').addEventListener('change', renderListView);
 
 // ---------------------
 // Add / Manage view
@@ -378,19 +411,33 @@ function getGroups() {
   return Array.from(set).sort();
 }
 
-// Rebuild the <select> options for the group filter dropdown.
+// Rebuild the <select> options for both group filter dropdowns.
 function updateGroupOptions() {
+  const groups = getGroups();
+
+  // Update Study view group filter
   const sel = document.getElementById('group-filter');
   const prev = sel.value;
   sel.innerHTML = '<option value="">All groups</option>';
-  getGroups().forEach(g => {
+  groups.forEach(g => {
     const opt = document.createElement('option');
     opt.value = g;
     opt.textContent = g;
     sel.appendChild(opt);
   });
-  // try to restore previous selection
   sel.value = prev;
+
+  // Update List view group filter
+  const listSel = document.getElementById('list-group-filter');
+  const listPrev = listSel.value;
+  listSel.innerHTML = '<option value="">All groups</option>';
+  groups.forEach(g => {
+    const opt = document.createElement('option');
+    opt.value = g;
+    opt.textContent = g;
+    listSel.appendChild(opt);
+  });
+  listSel.value = listPrev;
 }
 
 // ---------------------
